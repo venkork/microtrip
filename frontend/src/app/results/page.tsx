@@ -13,6 +13,9 @@ interface Place {
   userRatingCount?: number;
   photos?: Array<{
     name: string;
+    authorAttributions?: Array<{
+      name: string;
+    }>;
   }>;
 }
 
@@ -34,67 +37,77 @@ interface TripRecommendation {
   day2: Day;
 }
 
+const getPhotoUrl = (photoReference: string) => {
+  if (!photoReference) return '';
+  
+  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_PLACES_API_KEY;
+  if (!apiKey) {
+    console.error('API key not found');
+    return '';
+  }
+
+  if (photoReference.startsWith('places/')) {
+    return `https://places.googleapis.com/v1/${photoReference}/media?key=${apiKey}&maxHeightPx=400`;
+  }
+
+  return `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${photoReference}&key=${apiKey}`;
+};
+
 const PlaceCard = ({ place }: { place: Place }) => {
   const [imageError, setImageError] = useState(false);
+  const photo = place.photos?.[0];
+  const photoReference = photo?.name || '';
 
-  const getPhotoUrl = (photoReference: string): string => {
-    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_PLACES_API_KEY;
-    console.log('API Key:', apiKey ? 'Present' : 'Missing');
-    console.log('Photo Reference:', photoReference);
-    
-    if (!apiKey) {
-      console.error('Google Places API key is not configured');
-      return '';
-    }
-
-    // Extract the photo reference from the full name
-    const parts = photoReference.split('/');
-    if (parts.length < 3) {
-      console.error('Invalid photo reference format:', photoReference);
-      return '';
-    }
-
-    // The format is places/{placeId}/photos/{photoId}
-    const placeId = parts[1];
-    const photoId = parts[3];
-    
-    // Use the Places API v1 photo endpoint
-    const url = `https://places.googleapis.com/v1/places/${placeId}/photos/${photoId}/media?key=${apiKey}&maxHeightPx=400`;
-    console.log('Generated URL:', url);
-    return url;
-  };
+  useEffect(() => {
+    // Log detailed photo licensing information
+    console.log(`📸 Photo licensing for ${place.displayName?.text}:`, {
+      name: place.displayName?.text,
+      hasPhoto: !!photo,
+      authorAttributions: photo?.authorAttributions || 'No attribution data',
+      reference: photoReference,
+      // Log any other licensing-related fields from the photo object
+      // This will help us see what licensing data is available
+      fullPhotoData: photo
+    });
+  }, [place, photo, photoReference]);
 
   return (
     <div className="bg-white rounded-lg shadow-md overflow-hidden">
-      <div className="h-48 bg-gray-100 relative">
-        {!imageError && place.photos?.[0]?.name ? (
-          <div className="w-full h-full relative">
+      <div className="relative h-48">
+        {photo ? (
+          <>
             <img
-              src={getPhotoUrl(place.photos[0].name)}
-              alt={place.displayName.text}
+              src={getPhotoUrl(photoReference)}
+              alt={place.displayName?.text || 'Place'}
               className="w-full h-full object-cover"
               onError={(e) => {
-                console.error('Image failed to load:', e);
-                console.error('Failed URL:', (e.target as HTMLImageElement).src);
+                console.log('❌ Photo failed:', place.displayName?.text);
                 setImageError(true);
               }}
+              onLoad={() => {
+                console.log('✅ Photo loaded:', place.displayName?.text);
+              }}
             />
-          </div>
+            {photo?.authorAttributions && (
+              <div className="absolute bottom-0 right-0 bg-black bg-opacity-50 text-white text-xs p-1">
+                Photo by: {photo.authorAttributions[0]?.name}
+              </div>
+            )}
+          </>
         ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <span className="text-gray-400">No image available</span>
+          <div className="w-full h-full flex items-center justify-center bg-gray-100">
+            <span className="text-gray-500">No image available</span>
           </div>
         )}
       </div>
       <div className="p-4">
-        <h4 className="font-semibold text-gray-800 mb-1">{place.displayName.text}</h4>
-        <p className="text-sm text-gray-600">{place.formattedAddress}</p>
+        <h3 className="text-lg font-semibold">{place.displayName?.text}</h3>
+        <p className="text-gray-600">{place.formattedAddress}</p>
         {place.rating && (
-          <div className="flex items-center mt-2">
-            <span className="text-yellow-400">★</span>
-            <span className="ml-1 text-sm text-gray-600">
-              {place.rating.toFixed(1)} ({place.userRatingCount} reviews)
-            </span>
+          <div className="mt-2">
+            <span className="text-yellow-500">★</span>
+            <span className="ml-1">{place.rating}</span>
+            <span className="text-gray-400 ml-1">({place.userRatingCount} reviews)</span>
           </div>
         )}
       </div>
